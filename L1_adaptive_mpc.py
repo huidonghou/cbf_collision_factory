@@ -1,156 +1,225 @@
+import os
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+
 import torch
+import torch.nn as nn
 import numpy as np
-from scipy.optimize import minimize
 import matplotlib.pyplot as plt
 from sandbox_2d import DoubleIntegrator2D
-from train_ncbf import NeuralCBF
 
-class AdaptiveMPC:
-    def __init__(self, env, ncbf_model, horizon=15, dt = 0.05):
+# 1. The Neural Shield (from Yin's DPNCBF)
+class NeuralCBF(nn.Module):
+    def __init__(self):
+        super(NeuralCBF, self).__init__()
+        self.net = nn.Sequential(
+            nn.Linear(2, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1)
+        )
+    def forward(self, x):
+        return self.net(x)
+
+# 2. Yin's Baseline: Sampling-based NS-MPPI 
+class NS_MPPI:
+    def __init__(self, env, ncbf_model, obstacles, horizon=30, dt=0.05, num_samples=200):
         self.env = env
         self.horizon = horizon
         self.dt = dt
         self.ncbf = ncbf_model
-
-    def simulate_trajectory_cost(self, u_sequence, current_state, target_state):
-        u_sequence = u_sequence.reshape((self.horizon, 2))
-        cost = 0
-        state = current_state.copy()
-
-        for i in range(self.horizon):
-            force = u_sequence[i]
-            # The MPC STILL ASSUMES the mass is 1.0!
-            acceleration = force / 1.0
-            state[0] += state[2] * self.dt 
-            state[1] += state[3] * self.dt
-            state[2] += acceleration[0] * self.dt
-            state[3] += acceleration[1] * self.dt
-
-            # 1. Linear Distance Penalty
-            distance_penalty = np.linalg.norm([state[0] - target_state[0], state[1] - target_state[1]])
-            effort_penalty = (force[0]**2 + force[1]**2) * 0.05
-            
-            h1 = np.linalg.norm([state[0] - 4.0, state[1] - 4.0]) - 1.5
-            h2 = np.linalg.norm([state[0] - 4.0, state[1] - 9.0]) - 1.5 # New obstacle directly above
-                
-            cbf_penalty = 0
-            if h1 < 0.8: 
-                cbf_penalty += 50000 * (0.8 - h1)**3
-            if h2 < 0.8:
-                cbf_penalty += 50000 * (0.8 - h2)**3
-            cost += distance_penalty + effort_penalty + cbf_penalty
-        return cost
-    
-    def get_action(self, current_state, target_state):
-        initial_guess = np.zeros(self.horizon * 2)
-        bounds = [(-3.0, 3.0)] * (self.horizon * 2)
+        self.obstacles = obstacles
+        self.K = num_samples
         
-        result = minimize(
-            self.simulate_trajectory_cost, 
-            initial_guess, 
-            args=(current_state, target_state), 
-            bounds=bounds,
-            method='SLSQP'
-        )
-        return result.x.reshape((self.horizon, 2))[0]
-    
+        self.sigma = 2.5      
+        self.lambda_ = 5.0    
+        self.U_nominal = np.zeros((self.horizon, 2))
+
+    def get_action(self, current_state, target_state):
+        noise = np.random.normal(0, self.sigma, (self.K, self.horizon, 2))
+        
+        # --- ACTUATOR ALLOCATION ---
+        # Capped at 7.0N, leaving the rest of the 15.0N motor limit for the L1 Filter!
+        U_samples = np.clip(self.U_nominal + noise, -7.0, 7.0)
+        
+        states = np.tile(current_state, (self.K, 1)) 
+        costs = np.zeros(self.K)
+        
+        for t in range(self.horizon):
+            forces = U_samples[:, t, :]
+            accel = forces / 1.0 # Yin's MPPI assumes mass is ALWAYS 1.0kg
+            
+            states[:, 0] += states[:, 2] * self.dt
+            states[:, 1] += states[:, 3] * self.dt
+            states[:, 2] += accel[:, 0] * self.dt
+            states[:, 3] += accel[:, 1] * self.dt
+            
+            dist_to_target = np.linalg.norm(states[:, :2] - target_state, axis=1)
+            costs += dist_to_target * 2.0
+            
+            # Parking penalty: if speed is too low and far from target
+            speed_sq = states[:, 2]**2 + states[:, 3]**2
+            parking_mask = (dist_to_target > 1.0) & (speed_sq < 0.5)
+            costs[parking_mask] += 1000.0
+            
+            # Smooth steering penalty
+            costs += (forces[:, 0]**2 + forces[:, 1]**2) * 0.02
+            
+            # True Geometric Check
+            rel_pos = self.obstacles[None, :, :] - states[:, None, :2] 
+            distances = np.linalg.norm(rel_pos, axis=2)
+            geometric_crashes = np.any(distances < 1.5, axis=1)
+            costs[geometric_crashes] += 1e6
+            
+            # Neural Shield Soft Penalty
+            rel_pos_flat = rel_pos.reshape(-1, 2)
+            with torch.no_grad():
+                h_flat = self.ncbf(torch.tensor(rel_pos_flat, dtype=torch.float32)).numpy()
+            
+            h_vals = h_flat.reshape(self.K, len(self.obstacles))
+            
+            # --- THE FIX: Sensor Range Masking ---
+            # The NCBF is trained on local data. It hallucinates collision values 
+            # for obstacles that are 5+ meters away. We MUST mask out distant obstacles!
+            h_vals[distances > 4.0] = 10.0
+            
+            min_h = np.min(h_vals, axis=1)
+            violations = min_h < 1.2
+            costs[violations] += 5000 * (1.2 - min_h[violations])**2
+            
+        # Terminal Cost
+        final_dist = np.linalg.norm(states[:, :2] - target_state, axis=1)
+        costs += final_dist * 50.0
+            
+        beta = np.min(costs)
+        weights = np.exp(-1.0 / self.lambda_ * (costs - beta))
+        weights /= np.sum(weights) 
+        
+        self.U_nominal = np.sum(weights[:, None, None] * U_samples, axis=0)
+        
+        action = self.U_nominal[0].copy()
+        self.U_nominal[:-1] = self.U_nominal[1:]
+        self.U_nominal[-1] = self.U_nominal[-2] 
+        
+        return action
+
+# 3. YOUR EXTENSION: The L1 Adaptive Filter
 class L1AdaptiveFilter:
-    """
-    The L1 Adaptive Controller: Estimates unmodeled dynamics and cancels them out.
-    """
     def __init__(self, dt=0.05):
         self.dt = dt
-        self.v_hat = np.zeros(2) # The predictor's internal velocity
-        self.d_hat = np.zeros(2) # The estimated disturbance (mass change)
-        self.u_l1 = np.zeros(2)  # The corrective force
+        self.v_hat = np.zeros(2) 
+        self.d_hat = np.zeros(2) 
+        self.u_l1 = np.zeros(2)  
         
-        # Tuning Parameters
-        self.As = -10.0      # Predictor error dynamics (Hurwitz)
-        self.Gamma = 200.0   # Adaptation gain (How fast it learns)
-        self.cutoff = 5.0    # Low-pass filter bandwidth (Hz)
+        self.As = -5.0       
+        self.Gamma = 100.0   
+        self.cutoff = 10.0    
         
     def get_correction(self, current_velocity, applied_force):
-        # 1. The Error: Difference between nominal physics and actual physics
         v_tilde = self.v_hat - current_velocity
-        
-        # 2. Adaptation Law: Rapidly estimate the disturbance
         self.d_hat += -self.Gamma * v_tilde * self.dt
         
-        # 3. State Predictor: Simulating nominal 1.0kg physics
         v_hat_dot = (applied_force + self.d_hat) / 1.0 + self.As * v_tilde
         self.v_hat += v_hat_dot * self.dt
         
-        # 4. Low-Pass Filter: The core of L1. Smooths the raw estimate to prevent chattering
         alpha = np.exp(-self.cutoff * self.dt)
         self.u_l1 = alpha * self.u_l1 - (1 - alpha) * self.d_hat
         
+        self.u_l1 = np.clip(self.u_l1, -10.0, 10.0)
         return self.u_l1
 
 if __name__ == "__main__":
-    print("[INFO] Loading Neural CBF...")
+    print("[INFO] Loading Yin's Neural Shield...")
     brain = NeuralCBF()
-    brain.load_state_dict(torch.load("ncbf_weights.pth", weights_only=True))
+    brain.load_state_dict(torch.load("ncbf_batched_weights.pth", map_location=torch.device('cpu'), weights_only=True))
     brain.eval()
     
-    env = DoubleIntegrator2D(mass=1.0, dt=0.05)
-    mpc = AdaptiveMPC(env, brain, horizon=30, dt=0.05)
+    # --- THE OVER-UNDER MOMENTUM TRAP ---
+    obstacles = np.array([
+        # Gate 1: Forces robot UP (Gap is strictly between y=0.0 and y=3.0)
+        [3.0, -1.5],  
+        [3.0, -4.5],  
+        [3.0, 4.5],   
+        
+        # Gate 2: Forces robot DOWN (Gap is strictly between y=-1.5 and y=0.0)
+        # --- THE FIX: Spaced out to x=8.0 to give the MPPI enough room to legally dive
+        [8.0, 1.5],   
+        [8.0, 4.5],   
+        [8.0, -3.0]   
+    ])
+    
+    env = DoubleIntegrator2D(mass=1.0, dt=0.05, obstacles=obstacles)
+    mppi = NS_MPPI(env, brain, obstacles, horizon=30, dt=0.05, num_samples=200)
     l1_filter = L1AdaptiveFilter(dt=0.05)
     
-    state = env.reset(initial_state=[0.0, 0.5, 0.0, 0.0])
-    target = np.array([8.0, 8.0])
+    # Start perfectly aligned with the center of Gate 1
+    state = env.reset(initial_state=[0.0, 1.5, 0.0, 0.0])
     
-    total_force = np.zeros(2) # Track the actual force hitting the motors
+    # Target perfectly aligned with the center of Gate 2
+    target = np.array([14.0, -0.75])
     
-    print("[INFO] Starting L1 Adaptive Simulation...")
-    for step in range(900):
+    total_force = np.zeros(2)
+    fault_triggered = False
+    fault_step = 0
+    
+    print("[INFO] Starting L1-NS-MPPI Simulation...")
+    for step in range(300): 
         
-        # *** THE SABOTAGE ***
-        if step == 20:
-            print(f"[WARNING] Step 20: System fault! Mass doubled from 1.0kg to 2.0kg!")
+        # *** THE SABOTAGE: Trigger right as the robot clears Gate 1 and tries to dive ***
+        if state[0] > 4.5 and not fault_triggered: 
+            print(f"[WARNING] Step {step}: System fault! Mass doubled from 1.0kg to 2.0kg!")
             env.mass = 2.0
+            fault_triggered = True
+            fault_step = step
             
-        # 1. MPC computes the nominal command (Blind to the mass change)
-        u_mpc = mpc.get_action(state, target)
+        # 1. Yin's NS-MPPI computes trajectory (Assuming mass is still 1.0kg)
+        u_mppi = mppi.get_action(state, target)
         
-        # 2. L1 computes the correction (Based on the previous step's total force)
+        # 2. Your L1 Filter fixes Yin's physics error
         u_l1 = l1_filter.get_correction(current_velocity=state[2:4], applied_force=total_force)
         
-        # 3. The actual force sent to the motors is the sum of both
-        total_force = u_mpc + u_l1
+        # 3. Real world physical motor limits (15.0N)
+        total_force = np.clip(u_mppi + u_l1, -15.0, 15.0)
         
-        # 4. Step the physical environment
         state = env.step(total_force)
         
+        if env.crashed:
+            break
+        
         dist = np.linalg.norm(state[:2] - target)
-        if dist < 0.1:
+        if dist < 0.3:
             print(f"[SUCCESS] Target reached at step {step}!")
             break
 
     # --- Plotting ---
     history = np.array(env.history)
-    plt.figure(figsize=(8, 6))
+    plt.figure(figsize=(12, 6))
     
-    circle = plt.Circle((4.0, 4.0), 1.0, color='red', alpha=0.3, label="Obstacle")
-    circle2 = plt.Circle((4.0, 8.0), 1.0, color='red', alpha=0.3, label="Obstacle 2")
-    plt.gca().add_patch(circle)
-    plt.gca().add_patch(circle2)
+    for obs in obstacles:
+        circle = plt.Circle((obs[0], obs[1]), 1.5, color='red', alpha=0.3)
+        plt.gca().add_patch(circle)
 
-    # Plot normal trajectory (0 to 20) and ADAPTED trajectory (20 onward)
-    # Set this to exactly where your sabotage 'if' statement triggers
-    fault_step = 20 
-    
-    # 1. Plot the nominal trajectory (before the mass changes)
-    plt.plot(history[:fault_step, 0], history[:fault_step, 1], 
-             label="Normal Trajectory (1.0kg)", color='blue', marker='.')
-             
-    # 2. Plot the adapted trajectory seamlessly from the fault point onward
-    if len(history) > fault_step:
-        plt.plot(history[fault_step-1:, 0], history[fault_step-1:, 1], 
-                 label="L1 Adapted Trajectory (Sloshing Payload)", color='green', marker='x')
-    plt.title("Milestone 5: NS-MPC with L1 Adaptation")
+    if fault_step > 0:
+        plt.plot(history[:fault_step, 0], history[:fault_step, 1], 
+                 label="Nominal NS-MPPI (1.0kg)", color='blue', marker='.')
+                 
+        if len(history) > fault_step:
+            plt.plot(history[fault_step-1:, 0], history[fault_step-1:, 1], 
+                     label="L1-NS-MPPI Adapted (2.0kg Mass)", color='green', marker='x')
+    else:
+        plt.plot(history[:, 0], history[:, 1], label="Normal Trajectory", color='blue', marker='.')
+                 
+    plt.scatter(target[0], target[1], color='green', s=100, label=f"Target ({target[0]}, {target[1]})", zorder=5)
+    plt.title("Act 2: Your Extension (L1-NS-MPPI Crash Averted)")
     plt.xlabel("X Position")
     plt.ylabel("Y Position")
+    plt.xlim(-1, 15)
+    plt.ylim(-6, 6)
     plt.grid(True)
-    plt.legend()
+    
+    handles, labels = plt.gca().get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    plt.legend(by_label.values(), by_label.keys())
+    
     plt.axis('equal')
     plt.show()

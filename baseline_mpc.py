@@ -4,11 +4,10 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 import torch
 import torch.nn as nn
 import numpy as np
-from scipy.optimize import minimize
 import matplotlib.pyplot as plt
 from sandbox_2d import DoubleIntegrator2D
 
-# 1. Load the Single-Threat Oracle Architecture
+# 1. The Neural Shield (from Yin's DPNCBF)
 class NeuralCBF(nn.Module):
     def __init__(self):
         super(NeuralCBF, self).__init__()
@@ -22,172 +21,176 @@ class NeuralCBF(nn.Module):
     def forward(self, x):
         return self.net(x)
 
-class BatchedSafeMPC:
-    def __init__(self, env, ncbf_model, obstacles, horizon=15, dt=0.05):
+# 2. Yin's Baseline: Sampling-based NS-MPPI 
+class NS_MPPI:
+    def __init__(self, env, ncbf_model, obstacles, horizon=30, dt=0.05, num_samples=200):
         self.env = env
         self.horizon = horizon
         self.dt = dt
         self.ncbf = ncbf_model
-        self.obstacles = obstacles # Array of shape (N, 2)
+        self.obstacles = obstacles
+        self.K = num_samples
         
-        # --- CRITICAL FIX: Initialize Warm Start Array ---
-        self.last_u = np.zeros(self.horizon * 2)
-
-    def simulate_trajectory_cost(self, u_sequence, current_state, target_state):
-        u_sequence = u_sequence.reshape((self.horizon, 2))
-        cost = 0
-        state = current_state.copy()
-        
-        for i in range(self.horizon):
-            force = u_sequence[i]
-            acceleration = force / 1.0 # Assuming nominal 1.0kg for the planner
-            
-            state[0] += state[2] * self.dt 
-            state[1] += state[3] * self.dt
-            state[2] += acceleration[0] * self.dt
-            state[3] += acceleration[1] * self.dt
-
-            # --- THE WEIGHT TUNING FIX ---
-            # 1. Heavily reward getting closer to the target
-            distance_penalty = np.linalg.norm([state[0] - target_state[0], state[1] - target_state[1]]) * 2.0
-            
-            # 2. Drastically reduce the speed penalty so it's allowed to cruise (0.5 -> 0.02)
-            speed_penalty = (state[2]**2 + state[3]**2) * 0.02
-            
-            # 3. Slightly reduce effort penalty so it's not afraid to steer hard
-            effort_penalty = (force[0]**2 + force[1]**2) * 0.01
-            
-            # --- CRITICAL FIX 2: Wider Repulsive Forcefield ---
-            relative_positions = self.obstacles - state[:2]
-            rel_tensor = torch.tensor(relative_positions, dtype=torch.float32)
-            with torch.no_grad():
-                min_h = torch.min(self.ncbf(rel_tensor)).item()
-            
-            cbf_penalty = 0
-            # Widened from 1.0m to 2.5m so the optimizer "feels" the obstacle earlier
-            if min_h < 2.5: 
-                cbf_penalty = 50000 * (2.5 - min_h)**3
-
-            cost += distance_penalty + speed_penalty + effort_penalty + cbf_penalty
-            
-        return cost
-
-    def cbf_constraint(self, u_sequence, current_state):
-        """
-        The Batched Neural Shield. 
-        Evaluates N obstacles in a single PyTorch pass.
-        """
-        u_sequence = u_sequence.reshape((self.horizon, 2))
-        state = current_state.copy()
-        h_values = []
-        
-        for i in range(self.horizon):
-            force = u_sequence[i]
-            acceleration = force / 1.0 
-            
-            state[0] += state[2] * self.dt 
-            state[1] += state[3] * self.dt
-            state[2] += acceleration[0] * self.dt
-            state[3] += acceleration[1] * self.dt
-            
-            # --- THE MAGIC: Batched Tensor Subtraction ---
-            # Subtract robot position from ALL obstacles instantly
-            relative_positions = self.obstacles - state[:2]
-            
-            # Push the batch to the AI
-            rel_tensor = torch.tensor(relative_positions, dtype=torch.float32)
-            with torch.no_grad():
-                # Returns an array of safety scores, one for each obstacle
-                h_batch = self.ncbf(rel_tensor) 
-                
-                # The optimizer only needs to satisfy the most dangerous threat
-                min_h = torch.min(h_batch).item()
-                
-            h_values.append(min_h)
-            
-        return np.array(h_values)
+        self.sigma = 2.5      
+        self.lambda_ = 5.0    
+        self.U_nominal = np.zeros((self.horizon, 2))
 
     def get_action(self, current_state, target_state):
-        # --- CRITICAL FIX: Warm Start from Previous Frame ---
-        initial_guess = self.last_u 
-        bounds = [(-15.0, 15.0)] * (self.horizon * 2)
+        noise = np.random.normal(0, self.sigma, (self.K, self.horizon, 2))
         
-        # Inject the Batched Neural CBF as a constraint
-        constraints = {'type': 'ineq', 'fun': self.cbf_constraint, 'args': (current_state,)}
+        # --- ACTUATOR ALLOCATION ---
+        # The originalMPPI is capped at 7.0N. 
+        U_samples = np.clip(self.U_nominal + noise, -7.0, 7.0)
         
-        result = minimize(
-            self.simulate_trajectory_cost, 
-            initial_guess, 
-            args=(current_state, target_state), 
-            bounds=bounds,
-            method='SLSQP',
-            options={'maxiter': 30, 'ftol': 1e-3} # --- CRITICAL FIX: Stop Optimizer Hangs ---
-        )
-        optimal_u_sequence = result.x.reshape((self.horizon, 2))
+        states = np.tile(current_state, (self.K, 1)) 
+        costs = np.zeros(self.K)
         
-        # --- UPDATE WARM START FOR NEXT TIMESTEP ---
-        next_u = np.zeros((self.horizon, 2))
-        next_u[:-1] = optimal_u_sequence[1:] # Shift sequence forward by 1
-        self.last_u = next_u.flatten()
+        for t in range(self.horizon):
+            forces = U_samples[:, t, :]
+            
+            # The original MPPI assumes mass is ALWAYS 1.0kg
+            accel = forces / 1.0 
+            
+            states[:, 0] += states[:, 2] * self.dt
+            states[:, 1] += states[:, 3] * self.dt
+            states[:, 2] += accel[:, 0] * self.dt
+            states[:, 3] += accel[:, 1] * self.dt
+            
+            dist_to_target = np.linalg.norm(states[:, :2] - target_state, axis=1)
+            costs += dist_to_target * 2.0
+            
+            # Smooth steering penalty to dampen high-frequency jitters
+            costs += (forces[:, 0]**2 + forces[:, 1]**2) * 0.05
+            
+            # --- Geometric Penetration Penalty ---
+            # Penalizes the depth of the crash so the MPPI fights for the shallowest impact
+            rel_pos = self.obstacles[None, :, :] - states[:, None, :2] 
+            distances = np.linalg.norm(rel_pos, axis=2)
+            penetrations = np.clip(1.5 - distances, 0.0, None)
+            costs += np.sum(penetrations, axis=1) * 5000.0
+            
+            # --- Neural Shield Soft Penalty ---
+            rel_pos_flat = rel_pos.reshape(-1, 2)
+            with torch.no_grad():
+                h_flat = self.ncbf(torch.tensor(rel_pos_flat, dtype=torch.float32)).numpy()
+            
+            h_vals = h_flat.reshape(self.K, len(self.obstacles))
+            
+            # Sensor Range Masking (Ignore distant hallucinations > 4.0m away)
+            h_vals[distances > 4.0] = 10.0
+            
+            min_h = np.min(h_vals, axis=1)
+            violations = min_h < 1.2
+            costs[violations] += 2000 * (1.2 - min_h[violations])**2
+            
+        # --- Terminal Cost ---
+        # Distance + Speed penalty to prevent swirling at the target
+        final_dist = np.linalg.norm(states[:, :2] - target_state, axis=1)
+        costs += final_dist * 50.0
+        final_speed_sq = states[:, 2]**2 + states[:, 3]**2
+        costs += final_speed_sq * 20.0
+            
+        beta = np.min(costs)
+        weights = np.exp(-1.0 / self.lambda_ * (costs - beta))
+        weights /= np.sum(weights) 
         
-        return optimal_u_sequence[0]
+        self.U_nominal = np.sum(weights[:, None, None] * U_samples, axis=0)
+        
+        action = self.U_nominal[0].copy()
+        self.U_nominal[:-1] = self.U_nominal[1:]
+        self.U_nominal[-1] = self.U_nominal[-2] 
+        
+        return action
 
 if __name__ == "__main__":
-    print("[INFO] Loading Batched Neural CBF...")
+    print("[INFO] Loading Yin's Neural Shield...")
     brain = NeuralCBF()
-    # We keep it on CPU for SciPy since transferring tiny matrices back and forth 
-    # to the GPU for every SLSQP step is actually slower than just doing it on the CPU.
     brain.load_state_dict(torch.load("ncbf_batched_weights.pth", map_location=torch.device('cpu'), weights_only=True))
     brain.eval()
     
-    # 1. Setup 50x50 Minefield
-    np.random.seed(42) # Seeded so you get the same minefield every run
-    num_obstacles = 15
-    # Generate random obstacles between 5m and 40m
-    obstacles = np.random.uniform(5.0, 40.0, (num_obstacles, 2))
+    # --- THE OVER-UNDER MOMENTUM TRAP ---
+    obstacles = np.array([
+        # Gate 1: Forces robot UP 
+        [3.0, -1.5],  
+        [3.0, -4.5],  
+        [3.0, 4.5],   
+        
+        # Gate 2: Forces robot DOWN (with plugged loophole)
+        [8.0, 1.5],   
+        [8.0, 4.5],   
+        [8.0, -3.0],  
+        [8.0, -6.0]   
+    ])
     
-    env = DoubleIntegrator2D(mass=1.0, dt=0.05)
+    # Sandbox strict physics enforcement
+    env = DoubleIntegrator2D(mass=1.0, dt=0.05, obstacles=obstacles)
     
-    # Increased from 20 to 30 to give the robot 1.5 seconds of foresight
-    mpc = BatchedSafeMPC(env, brain, obstacles, horizon=30, dt=0.05)
+    # The naked Yin controller
+    mppi = NS_MPPI(env, brain, obstacles, horizon=30, dt=0.05, num_samples=200)
     
-    state = env.reset(initial_state=[0.0, 0.0, 0.0, 0.0])
-    target = np.array([45.0, 45.0])
+    # Start and Target alignment
+    state = env.reset(initial_state=[0.0, 1.5, 0.0, 0.0])
+    target = np.array([14.0, -0.75])
     
-    print(f"[INFO] Navigating {num_obstacles} obstacles to target {target}...")
+    fault_triggered = False
+    fault_step = 0
     
-    # Increased loop count to 600 since the robot is now adhering to a speed limit
-    for step in range(600):
-        best_force = mpc.get_action(state, target)
-        state = env.step(best_force)
+    print("[INFO] Starting Baseline NS-MPPI Simulation...")
+    for step in range(250): 
+        
+        # *** THE SABOTAGE: Trigger right as the robot clears Gate 1 and tries to dive ***
+        if state[0] > 4.5 and not fault_triggered: 
+            print(f"[WARNING] Step {step}: System fault! Mass doubled from 1.0kg to 2.0kg!")
+            env.mass = 2.0
+            fault_triggered = True
+            fault_step = step
+            
+        # 1. Yin's NS-MPPI computes trajectory (Assuming mass is still 1.0kg)
+        u_mppi = mppi.get_action(state, target)
+        
+        # 2. Naked architecture: The motor command is ONLY what the MPPI asks for.
+        # Clipped strictly to its 7.0N assumed limit.
+        total_force = np.clip(u_mppi, -7.0, 7.0)
+        
+        state = env.step(total_force)
+        
+        if env.crashed:
+            break
         
         dist = np.linalg.norm(state[:2] - target)
-        if dist < 0.5:
+        if dist < 0.3:
             print(f"[SUCCESS] Target reached at step {step}!")
             break
-            
-        if step % 20 == 0:
-            print(f"Step {step}: Distance to target: {dist:.2f}m")
 
-    # 3. Plot the Result
+    # --- Plotting ---
     history = np.array(env.history)
-    plt.figure(figsize=(10, 10))
+    plt.figure(figsize=(12, 6))
     
-    # Draw all N obstacles
     for obs in obstacles:
-        circle = plt.Circle((obs[0], obs[1]), 1.5, color='red', alpha=0.4)
+        circle = plt.Circle((obs[0], obs[1]), 1.5, color='red', alpha=0.3)
         plt.gca().add_patch(circle)
 
-    plt.plot(history[:, 0], history[:, 1], label="MPC Trajectory", color='blue', linewidth=2)
-    plt.scatter(0, 0, color='black', s=100, label="Start")
-    plt.scatter(target[0], target[1], color='green', s=100, label="Target")
-    
-    plt.title(f"Batched N-Obstacle NCBF Navigation ({num_obstacles} Obstacles)")
+    if fault_step > 0:
+        plt.plot(history[:fault_step, 0], history[:fault_step, 1], 
+                 label="Nominal NS-MPPI (1.0kg)", color='blue', marker='.')
+                 
+        if len(history) > fault_step:
+            plt.plot(history[fault_step-1:, 0], history[fault_step-1:, 1], 
+                     label="Sabotaged NS-MPPI (Crash!)", color='orange', marker='x')
+    else:
+        plt.plot(history[:, 0], history[:, 1], label="Normal Trajectory", color='blue', marker='.')
+                 
+    plt.scatter(target[0], target[1], color='green', s=100, label=f"Target ({target[0]}, {target[1]})", zorder=5)
+    plt.title("Act 1: The Baseline Crash (Naked NS-MPPI)")
     plt.xlabel("X Position")
     plt.ylabel("Y Position")
-    plt.xlim(-2, 50)
-    plt.ylim(-2, 50)
+    plt.xlim(-1, 15)
+    plt.ylim(-8, 6)
     plt.grid(True)
-    plt.legend()
+    
+    handles, labels = plt.gca().get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    plt.legend(by_label.values(), by_label.keys())
+    
     plt.axis('equal')
     plt.show()
