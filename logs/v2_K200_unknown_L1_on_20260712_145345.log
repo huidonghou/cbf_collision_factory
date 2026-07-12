@@ -1,0 +1,23 @@
+[INFO] Self-contained logging activated.
+[INFO] Writing all stdout/stderr channels to: ./logs\v2_K200_unknown_L1_on_20260712_145345.log
+------------------------------------------------------------
+
+[36m======================================================================================================================[0m
+[36m[1m[INFO][IsaacLab]: Logging to file: C:\Users\JERRYH~1\AppData\Local\Temp\isaaclab\logs\isaaclab_2026-07-12_14-53-45.log[0m
+[36m======================================================================================================================[0m
+
+[33m14:53:45 [simulation_context.py] WARNING: The `enable_external_forces_every_iteration` parameter in the PhysxCfg is set to False. If you are experiencing noisy velocities, consider enabling this flag. You may need to slightly increase the number of velocity iterations (setting it to 1 or 2 rather than 0), together with this flag, to improve the accuracy of velocity updates.[0m
+[INFO] p_reach (env-local): [ 5.9262466e-01 -7.6293945e-05  1.7734389e+00]
+[INFO] p_home  (env-local): [2.5114441e-01 1.7166138e-05 1.5809889e+00]
+[INFO] p_lift  (env-local): [0.3030758  0.20731735 1.7333386 ]
+[INFO]: L1 Filter Enabled: True
+Num Samples: 200
+Traceback (most recent call last):
+  File "C:\Users\Jerry Hou\Desktop\Githubs\NeuralCBF\franka_v2.py", line 289, in <module>
+    main()
+  File "C:\Users\Jerry Hou\Desktop\Githubs\NeuralCBF\franka_v2.py", line 191, in main
+    mppi.shift(knots_per_replan)
+  File "C:\Users\Jerry Hou\Desktop\Githubs\NeuralCBF\batched_mppi.py", line 77, in shift
+    self.U_nom = torch.roll(self.U_nom, -n, dim = 0)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: roll() got an unexpected keyword argument 'dim'

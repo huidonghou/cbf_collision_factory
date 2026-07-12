@@ -193,7 +193,7 @@ if __name__ == "__main__":
     
     # Start and Target alignment
     state = env.reset(initial_state=[0.0, 1.5, 0.0, 0.0])
-    target = np.array([12.0, 8.75])
+    target = np.array([10.0, -6.0])
     
     total_force = np.zeros(2)
     fault_triggered = False

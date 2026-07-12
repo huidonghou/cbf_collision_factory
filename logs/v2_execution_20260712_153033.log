@@ -1,0 +1,83 @@
+[INFO] Self-contained logging activated.
+[INFO] Writing all stdout/stderr channels to: ./logs\v2_execution_20260712_153033.log
+------------------------------------------------------------
+
+[36m======================================================================================================================[0m
+[36m[1m[INFO][IsaacLab]: Logging to file: C:\Users\JERRYH~1\AppData\Local\Temp\isaaclab\logs\isaaclab_2026-07-12_15-30-33.log[0m
+[36m======================================================================================================================[0m
+
+[33m15:30:33 [simulation_context.py] WARNING: The `enable_external_forces_every_iteration` parameter in the PhysxCfg is set to False. If you are experiencing noisy velocities, consider enabling this flag. You may need to slightly increase the number of velocity iterations (setting it to 1 or 2 rather than 0), together with this flag, to improve the accuracy of velocity updates.[0m
+[INFO] p_reach (env-local): [ 5.9262466e-01 -7.6293945e-05  1.7734389e+00]
+[INFO] p_home  (env-local): [2.5114441e-01 1.7166138e-05 1.5809889e+00]
+[INFO]: L1 Filter Enabled: True
+Num Samples: 200
+t=000.5s | Phase 1: Nominal Reach  | EE err: 0.371 m | L1 sh:  +0.2 | L1 elbow:  -0.2 N-m | ESS:  81.5/200 | plan:  216.7 ms
+t=001.0s | Phase 1: Nominal Reach  | EE err: 0.347 m | L1 sh:  +0.4 | L1 elbow:  -0.1 N-m | ESS:  92.6/200 | plan:  200.1 ms
+t=001.5s | Phase 1: Nominal Reach  | EE err: 0.328 m | L1 sh:  +0.2 | L1 elbow:  +0.1 N-m | ESS:  24.3/200 | plan:  210.3 ms
+t=002.0s | Phase 1: Nominal Reach  | EE err: 0.304 m | L1 sh:  -0.7 | L1 elbow:  +0.6 N-m | ESS:  77.3/200 | plan:  196.7 ms
+t=002.5s | Phase 1: Nominal Reach  | EE err: 0.279 m | L1 sh:  -1.7 | L1 elbow:  +1.3 N-m | ESS:  50.9/200 | plan:  200.4 ms
+t=003.0s | Phase 1: Nominal Reach  | EE err: 0.251 m | L1 sh:  -1.9 | L1 elbow:  +1.4 N-m | ESS:  79.7/200 | plan:  191.9 ms
+t=003.5s | Phase 1: Nominal Reach  | EE err: 0.223 m | L1 sh:  -1.9 | L1 elbow:  +1.7 N-m | ESS:  67.1/200 | plan:  196.6 ms
+t=004.0s | Phase 1: Nominal Reach  | EE err: 0.196 m | L1 sh:  -2.2 | L1 elbow:  +1.8 N-m | ESS:  73.5/200 | plan:  203.5 ms
+t=004.5s | Phase 2: SABOTAGE       | EE err: 0.233 m | L1 sh: +14.5 | L1 elbow: +14.7 N-m | ESS:  38.0/200 | plan:  201.2 ms
+t=005.0s | Phase 2: SABOTAGE       | EE err: 0.213 m | L1 sh: +17.3 | L1 elbow: +16.5 N-m | ESS:  76.2/200 | plan:  210.0 ms
+t=005.5s | Phase 2: SABOTAGE       | EE err: 0.188 m | L1 sh: +17.6 | L1 elbow: +17.0 N-m | ESS:  68.5/200 | plan:  198.3 ms
+t=006.0s | Phase 2: SABOTAGE       | EE err: 0.163 m | L1 sh: +17.7 | L1 elbow: +17.1 N-m | ESS:  78.3/200 | plan:  191.3 ms
+t=006.5s | Phase 2: SABOTAGE       | EE err: 0.144 m | L1 sh: +17.9 | L1 elbow: +17.1 N-m | ESS:  23.9/200 | plan:  178.6 ms
+t=007.0s | Phase 2: SABOTAGE       | EE err: 0.135 m | L1 sh: +18.1 | L1 elbow: +17.2 N-m | ESS:  72.9/200 | plan:  211.8 ms
+t=007.5s | Phase 3: Returning Home | EE err: 0.322 m | L1 sh:  +2.0 | L1 elbow:  +5.8 N-m | ESS:  55.6/200 | plan:  195.2 ms
+t=008.0s | Phase 3: Returning Home | EE err: 0.343 m | L1 sh:  +0.1 | L1 elbow:  +1.7 N-m | ESS:  60.3/200 | plan:  205.5 ms
+t=008.5s | Phase 3: Returning Home | EE err: 0.355 m | L1 sh:  -0.5 | L1 elbow:  +1.4 N-m | ESS:  93.4/200 | plan:  180.9 ms
+t=009.0s | Phase 3: Returning Home | EE err: 0.336 m | L1 sh:  -0.8 | L1 elbow:  +1.7 N-m | ESS:  36.4/200 | plan:  180.9 ms
+t=009.5s | Phase 3: Returning Home | EE err: 0.308 m | L1 sh:  -1.3 | L1 elbow:  +1.8 N-m | ESS:  26.0/200 | plan:  186.0 ms
+t=010.0s | Phase 3: Returning Home | EE err: 0.287 m | L1 sh:  -1.6 | L1 elbow:  +2.1 N-m | ESS:  31.3/200 | plan:  201.5 ms
+t=010.5s | Phase 1: Nominal Reach  | EE err: 0.100 m | L1 sh:  -2.3 | L1 elbow:  +2.0 N-m | ESS:  21.1/200 | plan:  202.8 ms
+t=011.0s | Phase 1: Nominal Reach  | EE err: 0.090 m | L1 sh:  -1.9 | L1 elbow:  +2.2 N-m | ESS:  50.5/200 | plan:  192.3 ms
+t=011.5s | Phase 1: Nominal Reach  | EE err: 0.080 m | L1 sh:  -1.8 | L1 elbow:  +2.0 N-m | ESS:  67.0/200 | plan:  184.7 ms
+t=012.0s | Phase 1: Nominal Reach  | EE err: 0.070 m | L1 sh:  -1.5 | L1 elbow:  +1.9 N-m | ESS:  55.7/200 | plan:  213.5 ms
+t=012.5s | Phase 1: Nominal Reach  | EE err: 0.065 m | L1 sh:  -1.3 | L1 elbow:  +2.0 N-m | ESS:  74.6/200 | plan:  201.0 ms
+t=013.0s | Phase 1: Nominal Reach  | EE err: 0.096 m | L1 sh:  -1.4 | L1 elbow:  +1.8 N-m | ESS:  83.2/200 | plan:  195.8 ms
+t=013.5s | Phase 1: Nominal Reach  | EE err: 0.164 m | L1 sh:  -1.1 | L1 elbow:  +1.7 N-m | ESS: 109.2/200 | plan:  201.8 ms
+t=014.0s | Phase 1: Nominal Reach  | EE err: 0.221 m | L1 sh:  -1.0 | L1 elbow:  +1.7 N-m | ESS: 110.8/200 | plan:  186.3 ms
+t=014.5s | Phase 2: SABOTAGE       | EE err: 0.188 m | L1 sh: +14.8 | L1 elbow: +15.0 N-m | ESS:  61.6/200 | plan:  205.9 ms
+t=015.0s | Phase 2: SABOTAGE       | EE err: 0.120 m | L1 sh: +17.6 | L1 elbow: +17.0 N-m | ESS:  34.1/200 | plan:  208.7 ms
+t=015.5s | Phase 2: SABOTAGE       | EE err: 0.106 m | L1 sh: +17.8 | L1 elbow: +17.3 N-m | ESS:  24.4/200 | plan:  210.2 ms
+t=016.0s | Phase 2: SABOTAGE       | EE err: 0.107 m | L1 sh: +17.9 | L1 elbow: +17.3 N-m | ESS:  26.8/200 | plan:  203.4 ms
+t=016.5s | Phase 2: SABOTAGE       | EE err: 0.098 m | L1 sh: +17.9 | L1 elbow: +17.4 N-m | ESS:  25.2/200 | plan:  199.2 ms
+t=017.0s | Phase 2: SABOTAGE       | EE err: 0.078 m | L1 sh: +18.2 | L1 elbow: +17.3 N-m | ESS:  50.5/200 | plan:  206.1 ms
+t=017.5s | Phase 3: Returning Home | EE err: 0.361 m | L1 sh:  +2.9 | L1 elbow:  +4.3 N-m | ESS:  90.7/200 | plan:  204.3 ms
+t=018.0s | Phase 3: Returning Home | EE err: 0.416 m | L1 sh:  -0.9 | L1 elbow:  +1.6 N-m | ESS:  87.1/200 | plan:  211.4 ms
+t=018.5s | Phase 3: Returning Home | EE err: 0.414 m | L1 sh:  -1.6 | L1 elbow:  +1.5 N-m | ESS: 121.7/200 | plan:  193.4 ms
+t=019.0s | Phase 3: Returning Home | EE err: 0.356 m | L1 sh:  -0.9 | L1 elbow:  +1.4 N-m | ESS:  66.6/200 | plan:  220.8 ms
+t=019.5s | Phase 3: Returning Home | EE err: 0.353 m | L1 sh:  +0.9 | L1 elbow:  +1.3 N-m | ESS:  78.6/200 | plan:  212.3 ms
+t=020.0s | Phase 3: Returning Home | EE err: 0.378 m | L1 sh:  -1.4 | L1 elbow:  +1.7 N-m | ESS:  57.2/200 | plan:  205.6 ms
+t=020.5s | Phase 1: Nominal Reach  | EE err: 0.222 m | L1 sh:  -1.6 | L1 elbow:  +1.6 N-m | ESS:  90.1/200 | plan:  196.8 ms
+t=021.0s | Phase 1: Nominal Reach  | EE err: 0.073 m | L1 sh:  -1.2 | L1 elbow:  +1.5 N-m | ESS:  22.3/200 | plan:  208.4 ms
+t=021.5s | Phase 1: Nominal Reach  | EE err: 0.055 m | L1 sh:  -0.1 | L1 elbow:  +1.6 N-m | ESS:  86.3/200 | plan:  197.8 ms
+t=022.0s | Phase 1: Nominal Reach  | EE err: 0.140 m | L1 sh:  -0.5 | L1 elbow:  +1.4 N-m | ESS:  95.6/200 | plan:  217.0 ms
+t=022.5s | Phase 1: Nominal Reach  | EE err: 0.233 m | L1 sh:  -0.9 | L1 elbow:  +1.5 N-m | ESS: 124.8/200 | plan:  209.7 ms
+t=023.0s | Phase 1: Nominal Reach  | EE err: 0.206 m | L1 sh:  -0.9 | L1 elbow:  +1.4 N-m | ESS: 122.2/200 | plan:  217.7 ms
+t=023.5s | Phase 1: Nominal Reach  | EE err: 0.100 m | L1 sh:  -0.6 | L1 elbow:  +1.3 N-m | ESS:  88.5/200 | plan:  168.9 ms
+t=024.0s | Phase 1: Nominal Reach  | EE err: 0.064 m | L1 sh:  +0.3 | L1 elbow:  +1.2 N-m | ESS:  98.6/200 | plan:  206.2 ms
+t=024.5s | Phase 2: SABOTAGE       | EE err: 0.118 m | L1 sh: +15.6 | L1 elbow: +14.6 N-m | ESS:  32.3/200 | plan:  196.8 ms
+t=025.0s | Phase 2: SABOTAGE       | EE err: 0.080 m | L1 sh: +18.5 | L1 elbow: +16.7 N-m | ESS:  70.9/200 | plan:  199.9 ms
+t=025.5s | Phase 2: SABOTAGE       | EE err: 0.082 m | L1 sh: +19.1 | L1 elbow: +16.9 N-m | ESS: 118.3/200 | plan:  183.2 ms
+t=026.0s | Phase 2: SABOTAGE       | EE err: 0.115 m | L1 sh: +18.6 | L1 elbow: +17.0 N-m | ESS:  63.2/200 | plan:  199.7 ms
+t=026.5s | Phase 2: SABOTAGE       | EE err: 0.117 m | L1 sh: +18.3 | L1 elbow: +17.1 N-m | ESS:  45.3/200 | plan:  208.9 ms
+t=027.0s | Phase 2: SABOTAGE       | EE err: 0.073 m | L1 sh: +18.8 | L1 elbow: +17.0 N-m | ESS:  10.5/200 | plan:  199.5 ms
+t=027.5s | Phase 3: Returning Home | EE err: 0.367 m | L1 sh:  +3.4 | L1 elbow:  +3.2 N-m | ESS:  95.7/200 | plan:  208.2 ms
+t=028.0s | Phase 3: Returning Home | EE err: 0.390 m | L1 sh:  +1.8 | L1 elbow:  +0.9 N-m | ESS:  83.8/200 | plan:  205.9 ms
+t=028.5s | Phase 3: Returning Home | EE err: 0.459 m | L1 sh:  -1.0 | L1 elbow:  +0.9 N-m | ESS:  92.4/200 | plan:  191.2 ms
+t=029.0s | Phase 3: Returning Home | EE err: 0.454 m | L1 sh:  -0.8 | L1 elbow:  +1.0 N-m | ESS:  86.1/200 | plan:  189.2 ms
+t=029.5s | Phase 3: Returning Home | EE err: 0.397 m | L1 sh:  -0.4 | L1 elbow:  +0.9 N-m | ESS:  59.2/200 | plan:  204.1 ms
+t=030.0s | Phase 3: Returning Home | EE err: 0.338 m | L1 sh:  -0.0 | L1 elbow:  +1.0 N-m | ESS:  13.3/200 | plan:  186.8 ms
+t=030.5s | Phase 1: Nominal Reach  | EE err: 0.102 m | L1 sh:  +1.1 | L1 elbow:  +1.0 N-m | ESS: 113.3/200 | plan:  197.3 ms
+t=031.0s | Phase 1: Nominal Reach  | EE err: 0.070 m | L1 sh:  +1.1 | L1 elbow:  +0.8 N-m | ESS:  92.2/200 | plan:  199.1 ms
+t=031.5s | Phase 1: Nominal Reach  | EE err: 0.113 m | L1 sh:  -0.6 | L1 elbow:  +1.1 N-m | ESS:  48.0/200 | plan:  210.7 ms
+t=032.0s | Phase 1: Nominal Reach  | EE err: 0.069 m | L1 sh:  -0.2 | L1 elbow:  +0.8 N-m | ESS:  43.8/200 | plan:  187.7 ms
+t=032.5s | Phase 1: Nominal Reach  | EE err: 0.053 m | L1 sh:  +0.7 | L1 elbow:  +0.4 N-m | ESS:  61.0/200 | plan:  213.1 ms
+t=033.0s | Phase 1: Nominal Reach  | EE err: 0.082 m | L1 sh:  +0.9 | L1 elbow:  +0.4 N-m | ESS:  94.4/200 | plan:  188.1 ms
+t=033.5s | Phase 1: Nominal Reach  | EE err: 0.133 m | L1 sh:  +0.5 | L1 elbow:  +0.2 N-m | ESS:  90.0/200 | plan:  196.8 ms
+t=034.0s | Phase 1: Nominal Reach  | EE err: 0.165 m | L1 sh:  +0.4 | L1 elbow:  +0.2 N-m | ESS: 111.9/200 | plan:  206.1 ms
+t=034.5s | Phase 2: SABOTAGE       | EE err: 0.163 m | L1 sh: +16.6 | L1 elbow: +14.3 N-m | ESS:  86.7/200 | plan:  201.1 ms
+t=035.0s | Phase 2: SABOTAGE       | EE err: 0.124 m | L1 sh: +19.7 | L1 elbow: +16.3 N-m | ESS:  58.4/200 | plan:  194.8 ms
