@@ -93,7 +93,7 @@ class L1AdaptiveFilterPyTorch:
         self.d_hat += -self.Gamma * inertia_diag * v_tilde * self.dt
         alpha = math.exp(-self.cutoff * self.dt)
         self.u_l1 = alpha * self.u_l1 - (1.0 - alpha) * self.d_hat
-        self.u_l1 = torch.clamp(self.u_l1, -25.0, 25.0)          # was 40 (Edit 4)
+        self.u_l1 = torch.clamp(self.u_l1, -25.0, 25.0)          # was 40 
         v_hat_dot = (applied_torque + self.d_hat) / inertia_diag + self.As * v_tilde   # was / 1.0
         self.v_hat += v_hat_dot * self.dt
         return self.u_l1
@@ -219,7 +219,7 @@ class BatchedPhysicsMPPI:
         scaled = (cost - beta) / (cost.std() + 1e-6)
         w = torch.exp(-scaled / self.lambda_)      # set self.lambda_ = 0.5
         w = w / (w.sum() + 1e-10) # normalize to sum to 1 and prevent NaN
-        ess = 1.0 / (w ** 2).sum()  # effective sample size
+        ess = 1.0 / (w ** 2).sum()  # downstream of cost, normalized exponential weights. 
         self.U_nom = (w.view(K, -1, 1) * V).sum(dim=0)  # weighted average of the velocity sequences
 
         # Restore and broadcast the real state to env 0 (the "real" robot) for execution
@@ -321,6 +321,8 @@ def main():
             U_exec, last_ess, last_cost = mppi.plan(
                 q_real, dq_real, p_goal, finger_ref=home_q[:, ARM_DOF:]
             )
+            # Thinking cost, how long to plan
+            # Finding: noted that the thinking cost did not increase signifciantly, which proves the scalability on GPU structure
             plan_ms = (time.perf_counter() - t0) * 1e3
             exec_step = 0
             # Re-anchor the executed reference to the state the plan assumed,

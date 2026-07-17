@@ -39,12 +39,16 @@ from Write_log import SimLoggerTee
 from datetime import datetime
 from l1_filter import L1AdaptiveFilter
 from payload_manager import PayloadManager
-from batched_mppi import BatchedPhysicsMPPI, snapshot_ee_local
+from batched_mppi import BatchedPhysicsMPPI, measure_ee_goal
 parser = argparse.ArgumentParser(description="Phase 4: NS-MPPI with batched PhysX rollouts + L1 adaptive inner loop.")
 parser.add_argument("--num_samples", type=int, default=200, help="K = number of rollout env.")
 parser.add_argument("--hold_test", action="store_true", help="hold at home, no reach, no sabotage")
 parser.add_argument("--condition", choices = ["nominal","known", "unknown"], default = "unknown")
 parser.add_argument("--payload", type = float, default = 1.5, help = "grasped mass added to the hand link, unit is kg")
+parser.add_argument("--show_package", action="store_true", help = "render a visual package in the gripper after grasp")
+parser.add_argument("--solo_view", action="store_true", help="render only env 0; all K still simulate")
+parser.add_argument("--friction", type = float, default = 0.0, help="viscous coefficient c on env 0 (N·m·s/rad); 0 = off")
+parser.add_argument("--l1_off", action="store_true", help="disable the L1 correction")
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 app_launcher = AppLauncher(args_cli)
@@ -53,7 +57,7 @@ simulation_app = app_launcher.app
 import torch
 import math
 import isaaclab.sim as sim_utils
-from isaaclab.assets import AssetBaseCfg, ArticulationCfg, Articulation
+from isaaclab.assets import AssetBaseCfg, ArticulationCfg, Articulation, RigidObject, RigidObjectCfg
 from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
 from isaaclab.utils import configclass
 from isaaclab_assets import FRANKA_PANDA_CFG 
@@ -68,6 +72,17 @@ class RolloutFarmSceneCfg(InteractiveSceneCfg):
         spawn=sim_utils.GroundPlaneCfg(),
     )
     robot: ArticulationCfg = franka_cfg
+    package = RigidObjectCfg(
+     prim_path="{ENV_REGEX_NS}/Package",
+        spawn=sim_utils.CuboidCfg(
+        size=(0.06, 0.06, 0.06),
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+        visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.55, 0.35, 0.15)),
+        # deliberately NO collision_props -- see warning below
+    ),
+    init_state=RigidObjectCfg.InitialStateCfg(pos=(0.0, 0.0, -2.0)),  # parked underground until grasp
+)
+
 
 # For the constant definition, please refer to the franka_constants.py file, which documents choicses
 # Note that TAU_MAX has shape (1,9) where the rest is (1,7), as the last two units have different unit
@@ -81,21 +96,38 @@ def main():
     sim_cfg = sim_utils.SimulationCfg(dt=0.01)
     sim = sim_utils.SimulationContext(sim_cfg)
     scene_cfg = RolloutFarmSceneCfg(num_envs=args_cli.num_samples, env_spacing=3.0)
-
+    
+    # Franka in Isaac Lab came with its own attributes, so to be accurate and see only our approach, need to set the zero
     for name in scene_cfg.robot.actuators.keys():
         scene_cfg.robot.actuators[name].stiffness = 0.0
         scene_cfg.robot.actuators[name].damping = 0.0
     scene = InteractiveScene(scene_cfg)
+    package = scene["package"]
     sim.reset()
+    if args_cli.solo_view and not args_cli.headless:
+        import omni.usd
+        from pxr import UsdGeom
+        stage = omni.usd.get_context().get_stage()
+        for i in range(1, scene.num_envs):
+            prim = stage.GetPrimAtPath(f"/World/envs/env_{i}")
+            if prim.IsValid():
+                UsdGeom.Imageable(prim).MakeInvisible()
+        origin0 = scene.env_origins[0].cpu().numpy()
+        sim.set_camera_view(eye=(origin0 + [2.2, 2.2, 2.4]).tolist(),
+                            target=(origin0 + [0.0, 0.0, 1.2]).tolist())
     robot: Articulation = scene["robot"]
     device = sim.device
     dt = sim_cfg.dt
     ee_idx = robot.find_bodies("panda_hand")[0][0]
  
-    home_q = torch.tensor([[0.0, -1.0, 0.0, -2.5, 0.0, 1.57, 0.78, 0.0, 0.0]], device=device)
-    reach_q = torch.tensor([[0.0, 0.2, 0.0, -1.0, 0.0, 1.57, 0.78, 0.0, 0.0]], device=device)
-    lift_q = torch.tensor([[0.6, -0.5, 0.0, -1.8, 0.0, 1.40, 0.78, 0.0, 0.0]], device=device)
+    # This is roughly the "distance" relative to the fixed/default position
+    # Angles in rad from the URDF zero posture (all-zeros = arm vertical); fingers in m.
+    # idx: 0 base-yaw | 1 shoulder | 2 arm-roll | 3 elbow (limits exclude 0!) | 4 forearm-roll | 5 wrist-pitch | 6 wrist-roll
+    home_q = torch.tensor([[0.0, -1.0, 0.0, -2.5, 0.0, 1.57, 0.78, 0.0, 0.0]], device=device) # folded rest posture; start state and return target
+    reach_q = torch.tensor([[0.0, 0.2, 0.0, -1.0, 0.0, 1.57, 0.78, 0.0, 0.0]], device=device) # extended pre-grasp posture; defines the Phase-1 goal
+    lift_q = torch.tensor([[0.6, -0.5, 0.0, -1.8, 0.0, 1.40, 0.78, 0.0, 0.0]], device=device) # raised transport posture; defines the Phase-2 goal
 
+    # Per-joint gain vectors
     Kp = torch.tensor([[400.0, 200.0, 400.0, 150.0, 100.0, 100.0, 50.0, 10.0, 10.0]], device=device)
     Kd = torch.tensor([[40.0, 20.0, 40.0, 15.0, 10.0, 10.0, 5.0, 1.0, 1.0]], device=device)
 
@@ -103,13 +135,18 @@ def main():
     l1_budget = torch.minimum(torch.full_like(tau_max, 25.0), 0.35 * tau_max)
 
  
-    # Task-space goals, obtained by teleport-and-read instead of analytic FK.
-    p_reach = snapshot_ee_local(robot, scene, sim, reach_q, ee_idx, dt)
-    p_home = snapshot_ee_local(robot, scene, sim, home_q, ee_idx, dt)
-    p_lift = snapshot_ee_local(robot, scene, sim, lift_q, ee_idx, dt)
+    # Task-space goals, obtained by teleport-and-read instead of analytic forward kinematics.
+    # Engine simulator decides the forward kinematics, and error calculation is consistent, avoid additional introduced bias
+    # For each hand-written joint configuration, teleport the robot there, ask PhysX where the hand landed, 
+    # store that 3-vector as the task-space goal; repeat for home/reach/lift; then place everyone at home and start.
+    p_reach = measure_ee_goal(robot, scene, sim, reach_q, ee_idx, dt)
+    p_home = measure_ee_goal(robot, scene, sim, home_q, ee_idx, dt)
+    p_lift = measure_ee_goal(robot, scene, sim, lift_q, ee_idx, dt)
     print(f"[INFO] p_reach (env-local): {p_reach.cpu().numpy()}")
     print(f"[INFO] p_home  (env-local): {p_home.cpu().numpy()}")
     print(f"[INFO] p_lift  (env-local): {p_lift.cpu().numpy()}")
+    print(f"[INFO] Viscous friction on env 0: c={args_cli.friction}")
+
 
     # Start everyone at home.
     robot.write_joint_state_to_sim(
@@ -131,7 +168,7 @@ def main():
     payload_on = False
     T_GRASP, T_END = 6.0, 16.0
 
-    ENABLE_L1_FILTER = True
+    ENABLE_L1_FILTER = not args_cli.l1_off
     print(f"[INFO]: L1 Filter Enabled: {ENABLE_L1_FILTER}")
     print(f"Num Samples: {args_cli.num_samples}")
     # print(f"[INFO]: flag attached")
@@ -163,8 +200,11 @@ def main():
         # 3. Has the payload NOT been attached yet? (not payload_on)
         # Note: Condition 3 is reqired since once the first two is met, it will be the state for the next couple seconds, and 
         # this is running at 100 times per second, so we need to avoid unnecessary loading
+
             if (not payload_on) and real_time >= T_GRASP and args_cli.condition != "nominal":
                 # Determine which environments receive the payload based on CLI args
+                # Note on the condition, nominal serves as the base test, mimicing behavior of picking things up
+                # Known means that all K robots know the weight it grasped, and will take account into consideration: imagination matches reality
                 ids = all_ids if args_cli.condition == "known" else env0_ids
                 payload.apply(ids, args_cli.payload)
                 payload_on = True
@@ -191,8 +231,12 @@ def main():
                 mppi.shift(knots_per_replan)
             t0 = time.perf_counter()
             hidden_for_plan = False
+
+            # The unknown one is really the test part: only the real env0 
+            # The key question we are asking: if the reality(unknown) is different from the physics, can the L1 filter, observing only robot 0's velocity
+            # adapts the difference
             if payload_on and args_cli.condition == "unknown":
-                payload.clear(env0_ids)  # env 0 sees the payload drop, but the planner does not
+                payload.clear(env0_ids)  # the planner's rollouts (including env 0's own worker-self) see the nominal mass
                 hidden_for_plan = True
             U_exec, last_ess, last_cost = mppi.plan(
                 q_real, dq_real, p_goal, finger_ref=home_q[:, ARM_DOF:]
@@ -214,6 +258,14 @@ def main():
  
         q = robot.data.joint_pos
         dq = robot.data.joint_vel
+
+        if args_cli.show_package and payload_on:
+            from isaaclab.utils.math import quat_apply
+            hand_pos  = robot.data.body_pos_w[:, ee_idx]          # (K, 3), world frame
+            hand_quat = robot.data.body_quat_w[:, ee_idx]         # (K, 4)
+            grip_offset = torch.tensor([0.0, 0.0, 0.09], device=device).expand(hand_pos.shape[0], -1)
+            pkg_pos = hand_pos + quat_apply(hand_quat, grip_offset)   # 9 cm along hand z = between the fingertips
+            package.write_root_pose_to_sim(torch.cat([pkg_pos, hand_quat], dim=-1))
         # PD for all envs toward the same reference (workers just shadow env 0;
         # they get hard-reset at the next replan anyway).
         # tau = Kp * (q_ref_real - q) - Kd * dq  
@@ -246,6 +298,8 @@ def main():
         tau = torch.clamp(tau_net + tau_g + tau_c, -tau_max, tau_max)
         commanded_torque_prev = (tau[0:1] - tau_g[0:1] - tau_c[0:1]).clone()  # BEFORE disturbance: L1 sees intent
 
+        if args_cli.friction > 0.0:                          # add: --friction, type=float, default=0.0
+            tau[0, :7] -= args_cli.friction * dq[0, :7]      # env 0 only, after save line
         robot.set_joint_effort_target(tau)
         scene.write_data_to_sim()
         sim.step()  # rendered step
@@ -260,9 +314,12 @@ def main():
             ee_err = (ee_now - p_goal).norm().item()
             l1_sh = u_l1[0, 1].item()          # NEW: shoulder = joint index 1
             l1_el = u_l1[0, 3].item()
+            dq_sh = dq[0, 1].item()
+            dq_el = dq[0, 3].item()
             print(
                 f"t={real_time:05.1f}s | {phase_name} | EE err: {ee_err:.3f} m | "
                 f"L1 sh: {l1_sh:+5.1f} | L1 elbow: {l1_el:+5.1f} N-m | "
+                f"dq sh: {dq_sh:+.2f} | dq el: {dq_el:+.2f} rad/s | "
                 f"ESS: {last_ess:5.1f}/{args_cli.num_samples} | plan: {plan_ms:6.1f} ms"
             )
         
@@ -273,9 +330,10 @@ if __name__ == "__main__":
     os.makedirs(log_dir, exist_ok=True)
     # Check the L1 flag so you can ablate it later
 
-    l1_status = "L1_on" 
-    # l1_status ="L1_off"
-    filename = f"franka_v2_{args_cli.num_samples}_{args_cli.condition}_{l1_status}_{timestamp}.log"
+    l1_status = "L1_off" if args_cli.l1_off else "L1_on"
+    fric_tag = f"_fric{args_cli.friction:g}" if args_cli.friction > 0 else ""
+    filename = f"franka_v2_{args_cli.num_samples}_{args_cli.condition}_{l1_status}{fric_tag}_{timestamp}.log"
+
     log_filepath = os.path.join(log_dir, filename)
 
     # 2. Redirect standard outputs and errors

@@ -1,0 +1,47 @@
+[INFO] Self-contained logging activated.
+[INFO] Writing all stdout/stderr channels to: ./logs\franka_v2_200_nominal_L1_on_fric4_20260713_205928.log
+------------------------------------------------------------
+
+[36m======================================================================================================================[0m
+[36m[1m[INFO][IsaacLab]: Logging to file: C:\Users\JERRYH~1\AppData\Local\Temp\isaaclab\logs\isaaclab_2026-07-13_20-59-28.log[0m
+[36m======================================================================================================================[0m
+
+[33m20:59:29 [simulation_context.py] WARNING: The `enable_external_forces_every_iteration` parameter in the PhysxCfg is set to False. If you are experiencing noisy velocities, consider enabling this flag. You may need to slightly increase the number of velocity iterations (setting it to 1 or 2 rather than 0), together with this flag, to improve the accuracy of velocity updates.[0m
+[INFO] p_reach (env-local): [ 5.9262466e-01 -7.6293945e-05  1.7734389e+00]
+[INFO] p_home  (env-local): [2.5114441e-01 1.7166138e-05 1.5809889e+00]
+[INFO] p_lift  (env-local): [0.3030758  0.20731735 1.7333386 ]
+[INFO] Viscous friction on env 0: c=4.0
+[INFO]: L1 Filter Enabled: True
+Num Samples: 200
+t=000.5s | Phase 1: Approach  | EE err: 0.373 m | L1 sh:  +0.3 | L1 elbow:  +0.3 N-m | dq sh: -0.05 | dq el: -0.19 rad/s | ESS:  79.1/200 | plan:  199.0 ms
+t=001.0s | Phase 1: Approach  | EE err: 0.350 m | L1 sh:  +0.6 | L1 elbow:  +0.6 N-m | dq sh: -0.01 | dq el: -0.19 rad/s | ESS:  69.1/200 | plan:  218.4 ms
+t=001.5s | Phase 1: Approach  | EE err: 0.333 m | L1 sh:  +0.0 | L1 elbow:  +0.9 N-m | dq sh: -0.10 | dq el: -0.31 rad/s | ESS:  81.1/200 | plan:  211.3 ms
+t=002.0s | Phase 1: Approach  | EE err: 0.322 m | L1 sh:  -1.0 | L1 elbow:  +1.4 N-m | dq sh: -0.13 | dq el: -0.26 rad/s | ESS:  60.6/200 | plan:  191.6 ms
+t=002.5s | Phase 1: Approach  | EE err: 0.317 m | L1 sh:  -1.7 | L1 elbow:  +1.6 N-m | dq sh: -0.17 | dq el: -0.29 rad/s | ESS:  43.2/200 | plan:  213.2 ms
+t=003.0s | Phase 1: Approach  | EE err: 0.305 m | L1 sh:  -1.6 | L1 elbow:  +1.8 N-m | dq sh: -0.05 | dq el: -0.24 rad/s | ESS:  55.1/200 | plan:  207.5 ms
+t=003.5s | Phase 1: Approach  | EE err: 0.285 m | L1 sh:  -1.5 | L1 elbow:  +2.1 N-m | dq sh: -0.06 | dq el: -0.27 rad/s | ESS:  87.4/200 | plan:  214.7 ms
+t=004.0s | Phase 1: Approach  | EE err: 0.261 m | L1 sh:  -1.6 | L1 elbow:  +2.3 N-m | dq sh: +0.02 | dq el: -0.18 rad/s | ESS:  64.6/200 | plan:  203.0 ms
+t=004.5s | Phase 1: Approach  | EE err: 0.236 m | L1 sh:  -1.7 | L1 elbow:  +3.2 N-m | dq sh: -0.01 | dq el: -0.27 rad/s | ESS:  73.7/200 | plan:  189.9 ms
+t=005.0s | Phase 1: Approach  | EE err: 0.213 m | L1 sh:  -1.8 | L1 elbow:  +4.3 N-m | dq sh: +0.03 | dq el: -0.15 rad/s | ESS:  68.0/200 | plan:  202.1 ms
+t=005.5s | Phase 1: Approach  | EE err: 0.193 m | L1 sh:  -1.7 | L1 elbow:  +5.1 N-m | dq sh: -0.06 | dq el: -0.21 rad/s | ESS:  38.1/200 | plan:  191.9 ms
+t=006.0s | Phase 1: Approach  | EE err: 0.184 m | L1 sh:  -1.8 | L1 elbow:  +7.2 N-m | dq sh: -0.02 | dq el: -0.19 rad/s | ESS:  67.4/200 | plan:  199.3 ms
+t=006.5s | Phase 2: Transport | EE err: 0.184 m | L1 sh:  -2.5 | L1 elbow:  +7.9 N-m | dq sh: -0.22 | dq el: -0.14 rad/s | ESS:  42.0/200 | plan:  197.9 ms
+t=007.0s | Phase 2: Transport | EE err: 0.118 m | L1 sh:  -3.2 | L1 elbow:  +5.8 N-m | dq sh: -0.28 | dq el: -0.07 rad/s | ESS:  31.4/200 | plan:  200.8 ms
+t=007.5s | Phase 2: Transport | EE err: 0.077 m | L1 sh:  -3.2 | L1 elbow:  +3.1 N-m | dq sh: -0.34 | dq el: -0.10 rad/s | ESS:  50.4/200 | plan:  198.6 ms
+t=008.0s | Phase 2: Transport | EE err: 0.055 m | L1 sh:  -2.8 | L1 elbow:  +1.9 N-m | dq sh: -0.35 | dq el: -0.18 rad/s | ESS:  49.4/200 | plan:  188.6 ms
+t=008.5s | Phase 2: Transport | EE err: 0.049 m | L1 sh:  -2.8 | L1 elbow:  +1.8 N-m | dq sh: -0.32 | dq el: -0.08 rad/s | ESS:  47.4/200 | plan:  210.3 ms
+t=009.0s | Phase 2: Transport | EE err: 0.047 m | L1 sh:  -2.8 | L1 elbow:  +1.7 N-m | dq sh: -0.27 | dq el: -0.01 rad/s | ESS:  56.5/200 | plan:  208.0 ms
+t=009.5s | Phase 2: Transport | EE err: 0.053 m | L1 sh:  -1.1 | L1 elbow:  +0.7 N-m | dq sh: -0.08 | dq el: +0.40 rad/s | ESS:  81.8/200 | plan:  194.1 ms
+t=010.0s | Phase 2: Transport | EE err: 0.048 m | L1 sh:  +0.3 | L1 elbow:  -0.5 N-m | dq sh: -0.05 | dq el: +0.22 rad/s | ESS:  82.6/200 | plan:  205.7 ms
+t=010.5s | Phase 2: Transport | EE err: 0.037 m | L1 sh:  +0.2 | L1 elbow:  -0.5 N-m | dq sh: -0.04 | dq el: +0.27 rad/s | ESS:  72.1/200 | plan:  193.9 ms
+t=011.0s | Phase 2: Transport | EE err: 0.032 m | L1 sh:  +0.2 | L1 elbow:  -0.4 N-m | dq sh: -0.09 | dq el: +0.26 rad/s | ESS:  79.1/200 | plan:  187.0 ms
+t=011.5s | Phase 2: Transport | EE err: 0.029 m | L1 sh:  +0.1 | L1 elbow:  -0.4 N-m | dq sh: -0.05 | dq el: +0.28 rad/s | ESS:  79.0/200 | plan:  215.1 ms
+t=012.0s | Phase 2: Transport | EE err: 0.028 m | L1 sh:  +0.0 | L1 elbow:  -0.4 N-m | dq sh: -0.09 | dq el: +0.24 rad/s | ESS:  88.6/200 | plan:  196.4 ms
+t=012.5s | Phase 2: Transport | EE err: 0.027 m | L1 sh:  +0.1 | L1 elbow:  -0.4 N-m | dq sh: -0.07 | dq el: +0.23 rad/s | ESS:  72.1/200 | plan:  193.8 ms
+t=013.0s | Phase 2: Transport | EE err: 0.025 m | L1 sh:  -0.0 | L1 elbow:  -0.4 N-m | dq sh: -0.07 | dq el: +0.24 rad/s | ESS:  80.6/200 | plan:  195.9 ms
+t=013.5s | Phase 2: Transport | EE err: 0.026 m | L1 sh:  +0.0 | L1 elbow:  -0.3 N-m | dq sh: -0.09 | dq el: +0.25 rad/s | ESS:  77.7/200 | plan:  207.2 ms
+t=014.0s | Phase 2: Transport | EE err: 0.026 m | L1 sh:  +0.1 | L1 elbow:  -0.3 N-m | dq sh: -0.07 | dq el: +0.26 rad/s | ESS:  76.3/200 | plan:  207.0 ms
+t=014.5s | Phase 2: Transport | EE err: 0.024 m | L1 sh:  +0.0 | L1 elbow:  -0.4 N-m | dq sh: -0.06 | dq el: +0.29 rad/s | ESS:  77.8/200 | plan:  205.6 ms
+t=015.0s | Phase 2: Transport | EE err: 0.025 m | L1 sh:  +0.0 | L1 elbow:  -0.4 N-m | dq sh: -0.06 | dq el: +0.30 rad/s | ESS:  86.8/200 | plan:  196.0 ms
+t=015.5s | Phase 2: Transport | EE err: 0.023 m | L1 sh:  +0.1 | L1 elbow:  -0.4 N-m | dq sh: -0.08 | dq el: +0.23 rad/s | ESS:  81.4/200 | plan:  209.4 ms
+t=016.0s | Phase 2: Transport | EE err: 0.020 m | L1 sh:  +0.1 | L1 elbow:  -0.4 N-m | dq sh: -0.08 | dq el: +0.22 rad/s | ESS:  68.4/200 | plan:  191.1 ms

@@ -1,0 +1,46 @@
+[INFO] Self-contained logging activated.
+[INFO] Writing all stdout/stderr channels to: ./logs\franka_v2_200_nominal_L1_off_20260713_153647.log
+------------------------------------------------------------
+
+[36m======================================================================================================================[0m
+[36m[1m[INFO][IsaacLab]: Logging to file: C:\Users\JERRYH~1\AppData\Local\Temp\isaaclab\logs\isaaclab_2026-07-13_15-36-47.log[0m
+[36m======================================================================================================================[0m
+
+[33m15:36:48 [simulation_context.py] WARNING: The `enable_external_forces_every_iteration` parameter in the PhysxCfg is set to False. If you are experiencing noisy velocities, consider enabling this flag. You may need to slightly increase the number of velocity iterations (setting it to 1 or 2 rather than 0), together with this flag, to improve the accuracy of velocity updates.[0m
+[INFO] p_reach (env-local): [ 5.9262466e-01 -7.6293945e-05  1.7734389e+00]
+[INFO] p_home  (env-local): [2.5114441e-01 1.7166138e-05 1.5809889e+00]
+[INFO] p_lift  (env-local): [0.3030758  0.20731735 1.7333386 ]
+[INFO]: L1 Filter Enabled: False
+Num Samples: 200
+t=000.5s | Phase 1: Approach  | EE err: 0.370 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  62.7/200 | plan:  214.3 ms
+t=001.0s | Phase 1: Approach  | EE err: 0.346 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  96.9/200 | plan:  202.3 ms
+t=001.5s | Phase 1: Approach  | EE err: 0.328 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  63.0/200 | plan:  217.3 ms
+t=002.0s | Phase 1: Approach  | EE err: 0.302 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  44.6/200 | plan:  185.8 ms
+t=002.5s | Phase 1: Approach  | EE err: 0.278 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  81.9/200 | plan:  218.9 ms
+t=003.0s | Phase 1: Approach  | EE err: 0.257 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  59.9/200 | plan:  207.6 ms
+t=003.5s | Phase 1: Approach  | EE err: 0.234 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  61.3/200 | plan:  201.1 ms
+t=004.0s | Phase 1: Approach  | EE err: 0.216 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  66.4/200 | plan:  198.8 ms
+t=004.5s | Phase 1: Approach  | EE err: 0.201 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  72.6/200 | plan:  186.3 ms
+t=005.0s | Phase 1: Approach  | EE err: 0.185 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  92.6/200 | plan:  197.7 ms
+t=005.5s | Phase 1: Approach  | EE err: 0.170 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  64.1/200 | plan:  192.0 ms
+t=006.0s | Phase 1: Approach  | EE err: 0.155 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS: 100.2/200 | plan:  208.6 ms
+t=006.5s | Phase 2: Transport | EE err: 0.278 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  76.9/200 | plan:  195.6 ms
+t=007.0s | Phase 2: Transport | EE err: 0.247 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  84.3/200 | plan:  207.6 ms
+t=007.5s | Phase 2: Transport | EE err: 0.220 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  87.9/200 | plan:  204.4 ms
+t=008.0s | Phase 2: Transport | EE err: 0.195 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  70.0/200 | plan:  205.5 ms
+t=008.5s | Phase 2: Transport | EE err: 0.171 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  87.3/200 | plan:  190.9 ms
+t=009.0s | Phase 2: Transport | EE err: 0.153 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  98.3/200 | plan:  191.2 ms
+t=009.5s | Phase 2: Transport | EE err: 0.139 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  85.6/200 | plan:  212.4 ms
+t=010.0s | Phase 2: Transport | EE err: 0.129 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  95.8/200 | plan:  187.7 ms
+t=010.5s | Phase 2: Transport | EE err: 0.123 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  64.0/200 | plan:  180.0 ms
+t=011.0s | Phase 2: Transport | EE err: 0.119 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  73.4/200 | plan:  180.0 ms
+t=011.5s | Phase 2: Transport | EE err: 0.116 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  70.0/200 | plan:  199.5 ms
+t=012.0s | Phase 2: Transport | EE err: 0.111 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  64.2/200 | plan:  190.1 ms
+t=012.5s | Phase 2: Transport | EE err: 0.106 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  70.2/200 | plan:  195.3 ms
+t=013.0s | Phase 2: Transport | EE err: 0.112 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  57.3/200 | plan:  215.0 ms
+t=013.5s | Phase 2: Transport | EE err: 0.114 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  49.0/200 | plan:  189.9 ms
+t=014.0s | Phase 2: Transport | EE err: 0.117 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  49.4/200 | plan:  199.1 ms
+t=014.5s | Phase 2: Transport | EE err: 0.119 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  68.7/200 | plan:  173.5 ms
+t=015.0s | Phase 2: Transport | EE err: 0.122 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  42.5/200 | plan:  200.9 ms
+t=015.5s | Phase 2: Transport | EE err: 0.124 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  77.3/200 | plan:  189.5 ms
+t=016.0s | Phase 2: Transport | EE err: 0.126 m | L1 sh:  +0.0 | L1 elbow:  +0.0 N-m | ESS:  51.8/200 | plan:  202.5 ms

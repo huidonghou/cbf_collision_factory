@@ -1,5 +1,5 @@
 import torch 
-# from isaaclab.assets import Articulation
+from isaaclab.assets import Articulation
 # from isaaclab.sim import SimulationContext
 # from isaaclab.scene import InteractiveScene
 from franka_constants import Franka_constants
@@ -90,7 +90,7 @@ class BatchedPhysicsMPPI:
 
         # Need to add the additional some noise into the robots before planning
         eps = torch.randn((K, H, D), device = self.device) * self.sigma
-        eps[0] = 0.0 # No disturbance on the initial robot
+        eps[0] = 0.0 # No noises on the initial robot
         V = torch.clamp(self.U_nom.unsqueeze(0) + eps, -self.dq_lim, self.dq_lim)
 
         q_ref = qb.clone() # This essentially acts like the target
@@ -133,23 +133,36 @@ class BatchedPhysicsMPPI:
         #Now updating the MPPI
         beta = cost.min()
         scaled = (cost - beta) / (cost.std() + 1e-6)
-        w = torch.exp(-scaled / self.lambda_)      # set self.lambda_ = 0.5
+        w = torch.exp(-scaled / self.lambda_)      
         w = w / (w.sum() + 1e-10) # normalize to sum to 1 and prevent NaN
         ess = 1.0 / (w ** 2).sum()  # effective sample size
         self.U_nom = (w.view(K, -1, 1) * V).sum(dim=0)  # weighted average of the velocity sequences
 
-        # Restore and broadcast the real state to env 0 (the "real" robot) for execution
+        # Restore and broadcast all K robots 
         robot.write_joint_state_to_sim(qb,dqb)
         scene.update(self.dt)
 
         return self.U_nom.clone(), ess.item(), beta.item()
 
-def snapshot_ee_local (robot, scene, sim, q_pose, ee_idx, dt):
-    """Teleport all envs to q_pose, take one settle step, read env-local EE position.
-    Avoids writing a hand-rolled FK just to define the task-space goal."""
+def measure_ee_goal(robot:Articulation, scene, sim, q_pose, ee_idx, dt):
+    """Mint a task-space goal point from a joint configuration, using PhysX as the FK oracle.
+
+    Writes q_pose (with zero velocities) to all K envs — the (K, dofs) write is an API
+    convenience; only env 0's hand is read — runs ONE torque-free physics step to
+    refresh cached body poses (arm free-falls ~10 ms; sub-mm offset, negligible vs.
+    the 0.05 m noise floor), and returns panda_hand's position in env-local frame
+    (world minus env origin — a FRAME CONVERSION, not an error/distance).
+
+    Env-local so one goal vector is valid across all spaced-out envs. PhysX-as-oracle
+    so goals share the exact kinematics that measures EE error at runtime.
+
+    NOTE: trashes sim state — call only before the experiment; main() re-poses to home_q after.
+    """
     K = scene.num_envs
     qb = q_pose.expand(K, -1).contiguous()
     robot.write_joint_state_to_sim(qb, torch.zeros_like(qb))
+
+    # Defensive Program, 25Hz update might fall easily, so we need buffer back up
     scene.write_data_to_sim()
     sim.step(render = False)
     scene.update(dt)

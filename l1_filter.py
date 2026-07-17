@@ -45,6 +45,6 @@ class L1AdaptiveFilter:
         return self.u_l1
     
     def reset(self):
-        self.v_hat = torch.zero_()
-        self.d_hat = torch.zero_()
-        self.u_l1 = torch.zero_()
+        self.v_hat.zero_()
+        self.d_hat.zero_()
+        self.u_l1.zero_()
