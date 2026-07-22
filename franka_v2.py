@@ -226,6 +226,8 @@ def main():
         #Now planning
         if step_count % replan_every == 0:
             q_real = robot.data.joint_pos[0:1].clone()
+
+            # The real robot data we care about,  env 0 
             dq_real = robot.data.joint_vel[0:1].clone()
             if U_exec is not None:
                 mppi.shift(knots_per_replan)

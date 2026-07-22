@@ -91,10 +91,10 @@ class BatchedPhysicsMPPI:
         # Need to add the additional some noise into the robots before planning
         eps = torch.randn((K, H, D), device = self.device) * self.sigma
         eps[0] = 0.0 # No noises on the initial robot
-        V = torch.clamp(self.U_nom.unsqueeze(0) + eps, -self.dq_lim, self.dq_lim)
+        V = torch.clamp(self.U_nom.unsqueeze(0) + eps, -self.dq_lim, self.dq_lim) # Notice the shape, V has (K, H, D) shape as eps
 
-        q_ref = qb.clone() # This essentially acts like the target
-        q_ref[:,D:] = finger_ref # This is the essentially for finger
+        q_ref = qb.clone() # This essentially acts like the target, and has shape (K, 9)
+        q_ref[:,D:] = finger_ref # This is the essentially for finger, has shape (K, 2) 
         
         # Initialize the score calculation
         # ee_err2 holds the calculated distance (squared) between the end-effector and the goal for all robots
@@ -103,13 +103,13 @@ class BatchedPhysicsMPPI:
 
         # Now we will roll toward the future with real physics
         for t in range(H):
-            v_t = V[:, t] # Select the specific time for the decision
+            v_t = V[:, t] # Select the specific time for the decision, and it has shape (K, D), since we are selecting velocity at time t
             for _ in range(self.decimation):
                 q_ref[:,:D] = torch.clamp(
                     q_ref[:,:D] + v_t * self.dt, self.q_lower, self.q_upper
-                )
+                ) # q_lower and upper has shape (1, 7), but clamping allows it to be (K, 7)
 
-                #Now need to measure the robot
+                #Now need to measure the robot, all 4 has shape (K, 9)
                 q, dq = robot.data.joint_pos, robot.data.joint_vel
                 tau_g = robot.root_physx_view.get_gravity_compensation_forces()
                 tau_c = robot.root_physx_view.get_coriolis_and_centrifugal_compensation_forces()
@@ -124,16 +124,16 @@ class BatchedPhysicsMPPI:
                 scene.update(self.dt)
             # Stage cost at knot boundary. NOTE: body_pos_w is WORLD frame and each
             # env has its own origin -- subtract env_origins (for consistency)
-            ee = robot.data.body_pos_w[:, self.ee_idx] - scene.env_origins
-            ee_err2 = (ee - p_goal).square().sum(dim=1)
-            dq_arm = robot.data.joint_vel[:,:D]
+            ee = robot.data.body_pos_w[:, self.ee_idx] - scene.env_origins # All has shape (K, 3), as this is a difference pairwise
+            ee_err2 = (ee - p_goal).square().sum(dim=1) #  Now it has shape (K, ) as we are summing up the cartesian coordinate wise differnce
+            dq_arm = robot.data.joint_vel[:,:D] # Again, which has shape (K, 7)
             cost += self.w_endeff * ee_err2 + self.w_dq * (dq_arm ** 2).sum(dim=1) + self.w_u * (v_t ** 2).sum(dim=1)
         cost += self.w_term * ee_err2 + self.w_vterm * (dq_arm ** 2).sum(dim=1)  # terminal cost, which needs to be updated as well
 
-        #Now updating the MPPI
+        # Now updating the MPPI
         beta = cost.min()
-        scaled = (cost - beta) / (cost.std() + 1e-6)
-        w = torch.exp(-scaled / self.lambda_)      
+        scaled = (cost - beta) / (cost.std() + 1e-6) # This is "normalization", and prevent stack overflow, but centered from the min
+        w = torch.exp(-scaled / self.lambda_)     # Now we have normalized, so the actual lambda became a probability parameter, the w coefficients does not affect
         w = w / (w.sum() + 1e-10) # normalize to sum to 1 and prevent NaN
         ess = 1.0 / (w ** 2).sum()  # effective sample size
         self.U_nom = (w.view(K, -1, 1) * V).sum(dim=0)  # weighted average of the velocity sequences
