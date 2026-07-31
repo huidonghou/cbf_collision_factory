@@ -49,13 +49,20 @@ parser.add_argument("--show_package", action="store_true", help = "render a visu
 parser.add_argument("--solo_view", action="store_true", help="render only env 0; all K still simulate")
 parser.add_argument("--friction", type = float, default = 0.0, help="viscous coefficient c on env 0 (N·m·s/rad); 0 = off")
 parser.add_argument("--l1_off", action="store_true", help="disable the L1 correction")
+parser.add_argument("--t_grasp", type = float, default = 6.0, help = "when the grasp event happens")
+parser.add_argument("--t_switch", type = float, default = 6.0, help = "when we will switch the case")
+parser.add_argument("--t_end", type=float, default=16.0, help="episode length (s)")
+parser.add_argument("--seed", type=int, default=-1, help="RNG seed for MPPI sampling; -1 = random")
+parser.add_argument("--w_posture", type=float, default=0.0, help="posture regularization weight; 0 = off")
+parser.add_argument("--log_rollouts", action="store_true", help="record per-replan rollout EE paths + weights")
+parser.add_argument("--pin_nominal", action="store_true", help="sample 0 carries the zero-noise nominal sequence")
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
 import torch
-import math
+import numpy as np
 import isaaclab.sim as sim_utils
 from isaaclab.assets import AssetBaseCfg, ArticulationCfg, Articulation, RigidObject, RigidObjectCfg
 from isaaclab.scene import InteractiveScene, InteractiveSceneCfg
@@ -93,7 +100,12 @@ FRANKA_DQ_LIM  = Franka_constants.FRANKA_DQ_LIM
 TAU_MAX = Franka_constants.TAU_MAX
 
 def main():
-    sim_cfg = sim_utils.SimulationCfg(dt=0.01)
+    sim_cfg = sim_utils.SimulationCfg(dt=0.01,
+                                      physx = sim_utils.PhysxCfg(
+                                        enable_external_forces_every_iteration = True,
+                                        min_velocity_iteration_count = 1
+
+                                      ))
     sim = sim_utils.SimulationContext(sim_cfg)
     scene_cfg = RolloutFarmSceneCfg(num_envs=args_cli.num_samples, env_spacing=3.0)
     
@@ -142,6 +154,8 @@ def main():
     p_reach = measure_ee_goal(robot, scene, sim, reach_q, ee_idx, dt)
     p_home = measure_ee_goal(robot, scene, sim, home_q, ee_idx, dt)
     p_lift = measure_ee_goal(robot, scene, sim, lift_q, ee_idx, dt)
+
+    print(f"[INFO] Plant B (ext_forces=True, min_vel_iter=1) | seed={args_cli.seed} | w_posture={args_cli.w_posture}")
     print(f"[INFO] p_reach (env-local): {p_reach.cpu().numpy()}")
     print(f"[INFO] p_home  (env-local): {p_home.cpu().numpy()}")
     print(f"[INFO] p_lift  (env-local): {p_lift.cpu().numpy()}")
@@ -154,10 +168,16 @@ def main():
         torch.zeros((scene.num_envs, robot.num_joints), device=device),
     )
     scene.update(dt)
- 
+
+    if args_cli.seed >= 0:
+        torch.manual_seed(args_cli.seed) # This was to ensure that the noise sequence is the same
+        # Seeding gives us paired comparisons — same noise across configurations, 
+        # so measured differences are the configuration and not sampling luck — and sweeping three seeds per cell ensures no result rests on a single draw. 
+
     mppi = BatchedPhysicsMPPI(
         robot, sim, scene, Kp, Kd, ee_idx, physics_dt=dt, device=device,
         num_samples=args_cli.num_samples, horizon=16, decimation=2, lambda_=0.9,
+        w_posture=args_cli.w_posture,  q_rest=reach_q[0, :ARM_DOF], pin_nominal= args_cli.pin_nominal
     )
     l1_filter = L1AdaptiveFilter(robot.num_joints, dt, device)
 
@@ -166,8 +186,8 @@ def main():
     env0_ids = torch.tensor([0],dtype = torch.long, device=device)
     all_ids = torch.arange(scene.num_envs, dtype = torch.long, device=device)
     payload_on = False
-    T_GRASP, T_END = 6.0, 16.0
-
+    t_grasp, t_switch, T_END = args_cli.t_grasp, args_cli.t_switch, args_cli.t_end # This is the new change per the conversation on making sure one change at a time
+    print(f"[INFO]: Event times: t_grasp = {t_grasp}, t_switch: {t_switch}, T_END:{T_END}")
     ENABLE_L1_FILTER = not args_cli.l1_off
     print(f"[INFO]: L1 Filter Enabled: {ENABLE_L1_FILTER}")
     print(f"Num Samples: {args_cli.num_samples}")
@@ -188,6 +208,12 @@ def main():
     commanded_torque_prev = torch.zeros((1, robot.num_joints), device=device)
     U_exec = None
     plan_ms, last_ess, last_cost = 0.0, float(args_cli.num_samples), 0.0
+    dq_wmax = torch.zeros(2, device=device); dq_wsum = torch.zeros(2, device=device)
+    wn = 0
+
+    q_lower_t = torch.tensor(FRANKA_Q_LOWER, device=device)
+    q_upper_t = torch.tensor(FRANKA_Q_UPPER, device=device)
+    rollout_bufs, rollout_ws, exec_path, replan_steps = [], [], [], []
 
     while simulation_app.is_running() and real_time < T_END:
         # Phase schedule
@@ -201,7 +227,7 @@ def main():
         # Note: Condition 3 is reqired since once the first two is met, it will be the state for the next couple seconds, and 
         # this is running at 100 times per second, so we need to avoid unnecessary loading
 
-            if (not payload_on) and real_time >= T_GRASP and args_cli.condition != "nominal":
+            if (not payload_on) and real_time >= t_grasp and args_cli.condition != "nominal":
                 # Determine which environments receive the payload based on CLI args
                 # Note on the condition, nominal serves as the base test, mimicing behavior of picking things up
                 # Known means that all K robots know the weight it grasped, and will take account into consideration: imagination matches reality
@@ -213,12 +239,12 @@ def main():
                 print(f"[CHECK] env0 hand mass now: {current_mass:.3f} kg")
 
                 # Calculate EE error directly here for the warning log
-                ee_now = (robot.data.body_pos_w[0, ee_idx] - scene.env_origins[0] - p_reach).norm().item()
-                grade = "" if ee_now < 0.15 else "  [WARN: grasped while %.2f m from target]" % ee_now
+                ee_dist_at_grasp = (robot.data.body_pos_w[0, ee_idx] - scene.env_origins[0] - p_reach).norm().item()
+                grade = "" if ee_dist_at_grasp < 0.15 else "  [WARN: grasped while %.2f m from target]" % ee_dist_at_grasp
                 print(f"[EVENT] t={real_time:.2f}s GRASP: +{args_cli.payload} kg on "
                       f"{'ALL envs' if args_cli.condition == 'known' else 'env 0'}{grade}")          # Env 0 only
                     
-            if real_time < T_GRASP:
+            if real_time < t_switch:
                 p_goal, phase_name = p_reach, "Phase 1: Approach "
             else:
                 p_goal, phase_name = p_lift, "Phase 2: Transport"
@@ -240,9 +266,14 @@ def main():
             if payload_on and args_cli.condition == "unknown":
                 payload.clear(env0_ids)  # the planner's rollouts (including env 0's own worker-self) see the nominal mass
                 hidden_for_plan = True
-            U_exec, last_ess, last_cost = mppi.plan(
+            U_exec, last_ess, ro_buf, ro_w = mppi.plan(
                 q_real, dq_real, p_goal, finger_ref=home_q[:, ARM_DOF:]
             )
+            if args_cli.log_rollouts:
+                rollout_bufs.append(ro_buf.cpu())
+                rollout_ws.append(ro_w.cpu())
+                replan_steps.append(step_count)
+           
             # Put the payload back onto the real robot for execution
             if hidden_for_plan:
                 payload.apply(env0_ids, args_cli.payload)
@@ -306,36 +337,66 @@ def main():
         scene.write_data_to_sim()
         sim.step()  # rendered step
         scene.update(dt)
+
+        d_w = dq[0, [1, 3]].abs()
+        dq_wmax = torch.maximum(dq_wmax, d_w); dq_wsum += dq[0, [1, 3]]; wn += 1
  
         real_time += dt
         step_count += 1
         exec_step += 1
- 
+        ee_now = robot.data.body_pos_w[0, ee_idx] - scene.env_origins[0]
+        ee_err = (ee_now - p_goal).norm().item()
+        if args_cli.log_rollouts:
+            exec_path.append(ee_now.cpu())
         if step_count % 50 == 0:
-            ee_now = robot.data.body_pos_w[0, ee_idx] - scene.env_origins[0]
-            ee_err = (ee_now - p_goal).norm().item()
+            
             l1_sh = u_l1[0, 1].item()          # NEW: shoulder = joint index 1
             l1_el = u_l1[0, 3].item()
             dq_sh = dq[0, 1].item()
             dq_el = dq[0, 3].item()
+            q_arm = robot.data.joint_pos[0,: 7]
+            margin_lo = q_arm - q_lower_t
+            margin_hi = q_upper_t - q_arm
+            margins = torch.minimum(margin_lo, margin_hi)
+            j_tight = margins.argmin().item()
+            
             print(
                 f"t={real_time:05.1f}s | {phase_name} | EE err: {ee_err:.3f} m | "
                 f"L1 sh: {l1_sh:+5.1f} | L1 elbow: {l1_el:+5.1f} N-m | "
-                f"dq sh: {dq_sh:+.2f} | dq el: {dq_el:+.2f} rad/s | "
-                f"ESS: {last_ess:5.1f}/{args_cli.num_samples} | plan: {plan_ms:6.1f} ms"
+                f"dq sh mx/mn: {dq_wmax[0]:.2f}/{dq_wsum[0]/wn:+.2f} | dq el mx/mn: {dq_wmax[1]:.2f}/{dq_wsum[1]/wn:+.2f} | "
+                f"ESS: {last_ess:5.1f}/{args_cli.num_samples} | plan: {plan_ms:6.1f} ms |"
+                f"EE: ({ee_now[0]:+.2f},{ee_now[1]:+.2f},{ee_now[2]:+.2f}) | "
+                f"tightest: j{j_tight} {margins[j_tight]:.2f} rad | "
             )
+            dq_wmax.zero_()
+            dq_wsum.zero_()
+            wn = 0
+
+    if args_cli.log_rollouts and rollout_bufs:
+        npz_path = os.path.splitext(log_filepath)[0] + ".npz"
+        np.savez(
+            npz_path,
+            rollouts=torch.stack(rollout_bufs).numpy(),   # (R, H, K, 3) EE, env-origin-corrected
+            weights=torch.stack(rollout_ws).numpy(),      # (R, K) normalized; sample 0 = pinned nominal if --pin_nominal
+            exec_path=torch.stack(exec_path).numpy(),     # (S, 3) same frame, every control step
+            replan_steps=np.array(replan_steps),          # (R,) step_count at each plan() call
+        )
+        print(f"[INFO] Rollout recording saved: {npz_path} "
+              f"({len(rollout_bufs)} replans, {len(exec_path)} exec samples)")
         
 if __name__ == "__main__":
     # 1. Create a clean, timestamped filename for tracking runs
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_dir = "./logs"
+    log_dir = "./logs/trajectory_rollout"
     os.makedirs(log_dir, exist_ok=True)
     # Check the L1 flag so you can ablate it later
 
     l1_status = "L1_off" if args_cli.l1_off else "L1_on"
     fric_tag = f"_fric{args_cli.friction:g}" if args_cli.friction > 0 else ""
-    filename = f"franka_v2_{args_cli.num_samples}_{args_cli.condition}_{l1_status}{fric_tag}_{timestamp}.log"
-
+    seed_tag = f"_s{args_cli.seed}" if args_cli.seed >= 0 else ""
+    wp_tag = f"_wp{args_cli.w_posture:g}" if args_cli.w_posture > 0 else ""
+    pin_tag = "_pin" if args_cli.pin_nominal else ""
+    filename = f"franka_v2_{args_cli.num_samples}_{args_cli.condition}_{l1_status}{fric_tag}_pB{seed_tag}{wp_tag}_{timestamp}_tg{args_cli.t_grasp:g}_ts{args_cli.t_switch:g}_te{args_cli.t_end:g}_pin_t{pin_tag}.log"    
     log_filepath = os.path.join(log_dir, filename)
 
     # 2. Redirect standard outputs and errors
@@ -347,4 +408,21 @@ if __name__ == "__main__":
     print(f"[INFO] Writing all stdout/stderr channels to: {log_filepath}")
     print("-" * 60)
     main()
-    simulation_app.close()
+    # simulation_app.close()
+     # --- 1. Secure the log FIRST: after this point the file is safe ---
+    sys.stdout.flush(); sys.stderr.flush()
+    sys.stdout = sys.__stdout__
+    sys.stderr = sys.__stderr__
+    for m in ("close", "flush"):
+        if hasattr(logger_tee, m):
+            getattr(logger_tee, m)()
+            break
+    # --- 2. Watchdog: guarantees process death even if close() blocks ---
+    import threading
+    threading.Timer(10.0, lambda: os._exit(0)).start()
+    # --- 3. Attempt polite shutdown; hang or crash here no longer matters ---
+    try:
+        simulation_app.close()
+    except Exception:
+        pass
+    os._exit(0)

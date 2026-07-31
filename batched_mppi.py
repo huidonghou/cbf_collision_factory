@@ -1,5 +1,5 @@
 import torch 
-from isaaclab.assets import Articulation
+# from isaaclab.assets import Articulation
 # from isaaclab.sim import SimulationContext
 # from isaaclab.scene import InteractiveScene
 from franka_constants import Franka_constants
@@ -18,7 +18,7 @@ class BatchedPhysicsMPPI:
     """
     def __init__(self, robot, sim, scene, Kp, Kd, ee_idx,
                  physics_dt, device, num_samples=200, horizon=16, decimation=2,
-                 lambda_=0.9):
+                 lambda_=0.9, w_posture=0.0, q_rest=None, pin_nominal = False):
         
         # Everything else is standard, ee_idx is the integer index of the panda_hand body
         # This is needed to know what piece of the arm to meaasure distance to origin
@@ -65,6 +65,10 @@ class BatchedPhysicsMPPI:
 
         self.U_nom = torch.zeros((horizon, ARM_DOF), device=device) # Initialization with 0
 
+        self.w_posture = w_posture
+        self.q_rest = q_rest.to(device) if q_rest is not None else None
+        self.pin_nominal = pin_nominal
+
     def shift(self, n_knots: int):
         """
         Receding Horizon, discard the "past" timed knots
@@ -92,6 +96,9 @@ class BatchedPhysicsMPPI:
         eps = torch.randn((K, H, D), device = self.device) * self.sigma
         eps[0] = 0.0 # No noises on the initial robot
         V = torch.clamp(self.U_nom.unsqueeze(0) + eps, -self.dq_lim, self.dq_lim) # Notice the shape, V has (K, H, D) shape as eps
+        if self.pin_nominal:
+            V[0] = self.U_nom   # sample 0 = zero-noise incumbent; clamp is a no-op by convexity
+            _pin_ref = self.U_nom.clone()          # TEMP smoke test
 
         q_ref = qb.clone() # This essentially acts like the target, and has shape (K, 9)
         q_ref[:,D:] = finger_ref # This is the essentially for finger, has shape (K, 2) 
@@ -102,6 +109,8 @@ class BatchedPhysicsMPPI:
         ee_err2 = torch.zeros(K, device = self.device)
 
         # Now we will roll toward the future with real physics
+        # Creaating a buffer actually tried to show the MPPI path
+        buffer = torch.zeros((H, K, 3), device = self.device)
         for t in range(H):
             v_t = V[:, t] # Select the specific time for the decision, and it has shape (K, D), since we are selecting velocity at time t
             for _ in range(self.decimation):
@@ -125,10 +134,18 @@ class BatchedPhysicsMPPI:
             # Stage cost at knot boundary. NOTE: body_pos_w is WORLD frame and each
             # env has its own origin -- subtract env_origins (for consistency)
             ee = robot.data.body_pos_w[:, self.ee_idx] - scene.env_origins # All has shape (K, 3), as this is a difference pairwise
+            buffer[t,:] = ee.clone()
             ee_err2 = (ee - p_goal).square().sum(dim=1) #  Now it has shape (K, ) as we are summing up the cartesian coordinate wise differnce
             dq_arm = robot.data.joint_vel[:,:D] # Again, which has shape (K, 7)
             cost += self.w_endeff * ee_err2 + self.w_dq * (dq_arm ** 2).sum(dim=1) + self.w_u * (v_t ** 2).sum(dim=1)
+
+            if self.w_posture > 0.0 and self.q_rest is not None:
+                        q_arm = robot.data.joint_pos[:, :D]
+                        cost += self.w_posture * ((q_arm - self.q_rest) ** 2).sum(dim=1)
+        
         cost += self.w_term * ee_err2 + self.w_vterm * (dq_arm ** 2).sum(dim=1)  # terminal cost, which needs to be updated as well
+
+        
 
         # Now updating the MPPI
         beta = cost.min()
@@ -138,13 +155,14 @@ class BatchedPhysicsMPPI:
         ess = 1.0 / (w ** 2).sum()  # effective sample size
         self.U_nom = (w.view(K, -1, 1) * V).sum(dim=0)  # weighted average of the velocity sequences
 
+
         # Restore and broadcast all K robots 
         robot.write_joint_state_to_sim(qb,dqb)
         scene.update(self.dt)
 
-        return self.U_nom.clone(), ess.item(), beta.item()
+        return self.U_nom.clone(), ess.item(), buffer, w
 
-def measure_ee_goal(robot:Articulation, scene, sim, q_pose, ee_idx, dt):
+def measure_ee_goal(robot, scene, sim, q_pose, ee_idx, dt):
     """Mint a task-space goal point from a joint configuration, using PhysX as the FK oracle.
 
     Writes q_pose (with zero velocities) to all K envs — the (K, dofs) write is an API
